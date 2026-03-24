@@ -2,3 +2,5 @@ data
 main
 .DS_Store
 .vscode
+
+docker-compose.yml

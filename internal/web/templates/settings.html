@@ -2,9 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/fa.min.css">
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="./fa.min.css">
+    <link rel="stylesheet" href="./style.css">
+    <script>
+        window.BASE_PATH = window.location.pathname.split('/').slice(0, -1).join('/') + '/' || '/';
+        const base = document.createElement('base');
+        base.href = window.BASE_PATH;
+        document.head.appendChild(base);
+    </script>
     <script>
         (function() {
             const theme = localStorage.getItem('theme') || 'system';
@@ -21,16 +28,16 @@
     <div class="container">
         <header>
             <div class="nav-bar">
-                <a href="/">
-                    <img src="/pwa/icon-192.png" alt="ExpenseOwl Logo" height="85" style="vertical-align: middle; margin-right: 20px;">
+                <a href="./">
+                    <img src="./pwa/icon-192.png" alt="ExpenseOwl Logo" height="85" style="vertical-align: middle; margin-right: 20px;">
                 </a>
-                <a href="/" class="view-button" data-tooltip="Dashboard">
+                <a href="./" class="view-button" data-tooltip="Dashboard">
                     <i class="fa-solid fa-chart-pie"></i>
                 </a>
-                <a href="/table" class="view-button" data-tooltip="Table View">
+                <a href="./table" class="view-button" data-tooltip="Table View">
                     <i class="fa-solid fa-table"></i>
                 </a>
-                <a href="/settings" class="view-button active" data-tooltip="Settings">
+                <a href="./settings" class="view-button active" data-tooltip="Settings">
                     <i class="fa-solid fa-gear"></i>
                 </a>
             </div>
@@ -95,7 +102,7 @@
                 <h2 align="center">Import/Export Data</h2>
                 <div class="export-buttons">
                     <div class="export-options">
-                        <a href="/export/csv" id="csv-export-file" class="nav-button" download="expenses.csv">Export to CSV</a>
+                        <a href="./export/csv" id="csv-export-file" class="nav-button" download="expenses.csv">Export to CSV</a>
                     </div>
                     <div class="import-option">
                         <label for="csv-import-file" class="nav-button">Import from CSV</label>
@@ -244,7 +251,7 @@
         </div>
     </div>
 
-    <script src="/functions.js"></script>
+    <script src="./functions.js"></script>
     <script>
         let categories = [];
         let allTags = new Set();
@@ -375,7 +382,7 @@
                 return;
             }
             try {
-                const response = await fetch('/categories/edit', {
+                const response = await fetch('./categories/edit', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(categories)
@@ -493,7 +500,7 @@
         async function saveCurrency() {
             const currencyCode = document.getElementById('currencySelect').value;
             try {
-                const response = await fetch('/currency/edit', {
+                const response = await fetch('./currency/edit', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(currencyCode)
@@ -517,7 +524,7 @@
         async function saveStartDate() {
             const startDateValue = document.getElementById("startDate").value;
             try {
-                const response = await fetch('/startdate/edit', {
+                const response = await fetch('./startdate/edit', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(parseInt(startDateValue, 10))
@@ -531,7 +538,7 @@
         
         async function fetchAndRenderRecurringExpenses() {
             try {
-                const response = await fetch('/recurring-expenses');
+                const response = await fetch('./recurring-expenses');
                 if (!response.ok) throw new Error('Failed to fetch recurring expenses');
                 recurringExpenses = await response.json() || [];
                 renderRecurringExpenses(recurringExpenses);
@@ -611,7 +618,7 @@
         async function confirmRecurringDelete(removeAll) {
             if (!recurringExpenseToDelete) return;
             try {
-                const response = await fetch(`/recurring-expense/delete?id=${recurringExpenseToDelete}&removeAll=${removeAll}`, { method: 'DELETE' });
+                const response = await fetch(`./recurring-expense/delete?id=${recurringExpenseToDelete}&removeAll=${removeAll}`, { method: 'DELETE' });
                 if (!response.ok) throw new Error('Failed to delete recurring expense');
                 showMessage('recurringExpenseMessage', 'Recurring expense deleted successfully', true);
                 fetchAndRenderRecurringExpenses();
@@ -662,7 +669,7 @@
             };
             
             try {
-                const response = await fetch(`/recurring-expense/edit?id=${recurringExpenseToEdit.id}&updateAll=${updateAll}`, {
+                const response = await fetch(`./recurring-expense/edit?id=${recurringExpenseToEdit.id}&updateAll=${updateAll}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(updatedData)
@@ -692,7 +699,7 @@
             summaryDiv.style.display = 'none';
 
             try {
-                const response = await fetch('/import/csv', {
+                const response = await fetch('./import/csv', {
                     method: 'POST',
                     body: formData
                 });
@@ -736,7 +743,7 @@
             summaryDiv.style.display = 'none';
 
             try {
-                const response = await fetch('/import/csvold', {
+                const response = await fetch('./import/csvold', {
                     method: 'POST',
                     body: formData
                 });
@@ -770,9 +777,9 @@
         async function initialize() {
             try {
                 const [configResponse, expensesResponse, recurringExpensesResponse] = await Promise.all([
-                    fetch('/config'),
-                    fetch('/expenses'),
-                    fetch('/recurring-expenses')
+                    fetch('./config'),
+                    fetch('./expenses'),
+                    fetch('./recurring-expenses')
                 ]);
                 if (!configResponse.ok) throw new Error('Failed to fetch configuration');
                 const config = await configResponse.json();
@@ -796,7 +803,7 @@
                 renderRecurringExpenses(recurringExpenses);
 
                 createTagInput('tags-input', 'selected-tags', 'tags-dropdown', addFormSelectedTags);
-                fetch('/version').then(r => r.ok ? r.text() : 'dev').then(version => {
+                fetch('./version').then(r => r.ok ? r.text() : 'dev').then(version => {
                     const link = document.getElementById('version-link');
                     link.textContent = version;
                     if (version !== 'dev') link.href = `https://github.com/tanq16/expenseowl/releases/tag/${version}`;
@@ -854,7 +861,7 @@
             };
 
             try {
-                const response = await fetch('/recurring-expense', {
+                const response = await fetch('./recurring-expense', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(formData)

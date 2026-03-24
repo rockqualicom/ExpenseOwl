@@ -2,14 +2,21 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/fa.min.css">
+    <link rel="stylesheet" href="./fa.min.css">
     <meta name="theme-color" content="#1a1a1a">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="manifest" href="/manifest.json">
-    <link rel="apple-touch-icon" href="/pwa/icon-192.png">
-    <link rel="stylesheet" href="/style.css">
+    <link rel="manifest" href="./manifest.json">
+    <link rel="apple-touch-icon" href="./pwa/icon-192.png">
+    <link rel="stylesheet" href="./style.css">
+    <script>
+        window.BASE_PATH = window.location.pathname.split('/').slice(0, -1).join('/') + '/' || '/';
+        const base = document.createElement('base');
+        base.href = window.BASE_PATH;
+        document.head.appendChild(base);
+    </script>
     <script>
         (function() {
             const theme = localStorage.getItem('theme') || 'system';
@@ -28,22 +35,22 @@
         }
     </script>
     <title>ExpenseOwl Dashboard</title>
-    <script src="/chart.min.js"></script>
+    <script src="./chart.min.js"></script>
 </head>
 <body>
     <div class="container">
         <header>
             <div class="nav-bar">
-                <a href="/">
-                    <img src="/pwa/icon-192.png" alt="ExpenseOwl Logo" height="85" style="vertical-align: middle; margin-right: 20px;">
+                <a href="./">
+                    <img src="./pwa/icon-192.png" alt="ExpenseOwl Logo" height="85" style="vertical-align: middle; margin-right: 20px;">
                 </a>
-                <a href="/" class="view-button active" data-tooltip="Dashboard">
+                <a href="./" class="view-button active" data-tooltip="Dashboard">
                     <i class="fa-solid fa-chart-pie"></i>
                 </a>
-                <a href="/table" class="view-button" data-tooltip="Table View">
+                <a href="./table" class="view-button" data-tooltip="Table View">
                     <i class="fa-solid fa-table"></i>
                 </a>
-                <a href="/settings" class="view-button" data-tooltip="Settings">
+                <a href="./settings" class="view-button" data-tooltip="Settings">
                     <i class="fa-solid fa-gear"></i>
                 </a>
             </div>
@@ -137,7 +144,7 @@
         </div>
     </div>
 
-    <script src="/functions.js"></script>
+    <script src="./functions.js"></script>
     <script>
         let currentCurrency = 'usd';
         let startDate = 1;
@@ -333,7 +340,7 @@
 
         async function initialize() {
             try {
-                const configResponse = await fetch('/config');
+                const configResponse = await fetch('./config');
                 if (!configResponse.ok) throw new Error('Failed to fetch configuration');
                 const config = await configResponse.json();
                 const categorySelect = document.getElementById('category');
@@ -343,7 +350,7 @@
                 currentCurrency = config.currency;
                 startDate = config.startDate;
                 
-                const response = await fetch('/expenses');
+                const response = await fetch('./expenses');
                 if (!response.ok) throw new Error('Failed to fetch data');
                 const data = await response.json();
                 allExpenses = Array.isArray(data) ? data : (data && Array.isArray(data.expenses) ? data.expenses : []);
@@ -491,7 +498,7 @@
                 tags: Array.from(selectedTags)
             };
             try {
-                const response = await fetch('/expense', {
+                const response = await fetch('./expense', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(formData)
