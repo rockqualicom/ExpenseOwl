@@ -197,6 +197,25 @@ func (s *jsonStore) UpdateStartDate(startDate int) error {
 	return s.writeConfigFile(s.configPath, data)
 }
 
+func (s *jsonStore) GetAutoCarryForward() (bool, error) {
+	config, err := s.GetConfig()
+	if err != nil {
+		return false, err
+	}
+	return config.AutoCarryForward, nil
+}
+
+func (s *jsonStore) UpdateAutoCarryForward(enabled bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := s.readConfigFile(s.configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read config file: %v", err)
+	}
+	data.AutoCarryForward = enabled
+	return s.writeConfigFile(s.configPath, data)
+}
+
 func (s *jsonStore) GetRecurringExpenses() ([]RecurringExpense, error) {
 	config, err := s.GetConfig()
 	if err != nil {
@@ -336,7 +355,120 @@ func (s *jsonStore) GetAllExpenses() ([]Expense, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read storage file: %v", err)
 	}
+	
+	// Check if auto-carry-forward is enabled and generate opening balances if needed
+	config, err := s.readConfigFile(s.configPath)
+	if err != nil {
+		return data.Expenses, nil // Return expenses even if config read fails
+	}
+	
+	if config.AutoCarryForward {
+		updatedExpenses, err := s.ensureOpeningBalances(data.Expenses, config)
+		if err == nil && len(updatedExpenses) > len(data.Expenses) {
+			// Save the updated expenses with new opening balances
+			data.Expenses = updatedExpenses
+			s.writeExpensesFile(s.filePath, data)
+		}
+	}
+	
 	return data.Expenses, nil
+}
+
+// ensureOpeningBalances checks all months with expenses and creates opening balance
+// expenses for months that don't have one yet (when auto-carry-forward is enabled)
+func (s *jsonStore) ensureOpeningBalances(expenses []Expense, config *Config) ([]Expense, error) {
+	if len(expenses) == 0 {
+		return expenses, nil
+	}
+	
+	// Group expenses by month (year-month)
+	monthMap := make(map[string][]Expense)
+	for _, exp := range expenses {
+		yearMonth := fmt.Sprintf("%d-%02d", exp.Date.Year(), exp.Date.Month())
+		monthMap[yearMonth] = append(monthMap[yearMonth], exp)
+	}
+	
+	// Sort months to process them in order
+	var months []string
+	for ym := range monthMap {
+		months = append(months, ym)
+	}
+	
+	// Find the earliest month
+	if len(months) == 0 {
+		return expenses, nil
+	}
+	
+	// Check each month (except the earliest) for opening balance
+	newExpenses := make([]Expense, 0)
+	currency := config.Currency
+	if currency == "" {
+		currency = "usd"
+	}
+	
+	// Use "Income" as the default category for opening balance
+	// This should exist in default categories
+	openingBalanceCategory := "Income"
+	
+	for yearMonth, monthExps := range monthMap {
+		// Check if this month already has an opening balance
+		hasOpeningBalance := false
+		for _, exp := range monthExps {
+			if exp.Name == "Opening Balance (Carried Forward)" {
+				hasOpeningBalance = true
+				break
+			}
+		}
+		
+		if hasOpeningBalance {
+			continue
+		}
+		
+		// Parse year and month
+		var year, month int
+		fmt.Sscanf(yearMonth, "%d-%d", &year, &month)
+		
+		// Calculate previous month
+		prevYear, prevMonth := year, month-1
+		if prevMonth == 0 {
+			prevYear--
+			prevMonth = 12
+		}
+		prevYearMonth := fmt.Sprintf("%d-%02d", prevYear, prevMonth)
+		
+		// Get previous month expenses
+		prevMonthExps, exists := monthMap[prevYearMonth]
+		if !exists {
+			continue // No previous month data, skip
+		}
+		
+		// Calculate previous month balance
+		prevIncome := 0.0
+		prevExpenses := 0.0
+		for _, exp := range prevMonthExps {
+			if exp.Amount > 0 {
+				prevIncome += exp.Amount
+			} else {
+				prevExpenses += -exp.Amount
+			}
+		}
+		prevBalance := prevIncome - prevExpenses
+		
+		// Only create opening balance if there's a positive balance to carry forward
+		if prevBalance > 0 {
+			// Create opening balance expense for the first day of current month
+			openingDate := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+			openingExp := GenerateOpeningBalanceExpense(prevBalance, currency, openingDate, openingBalanceCategory)
+			newExpenses = append(newExpenses, openingExp)
+		}
+	}
+	
+	// Add new opening balance expenses to the list
+	if len(newExpenses) > 0 {
+		expenses = append(expenses, newExpenses...)
+	}
+	
+	return expenses, nil
 }
 
 func (s *jsonStore) GetExpense(id string) (Expense, error) {

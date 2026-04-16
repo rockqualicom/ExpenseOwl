@@ -99,6 +99,18 @@
                 <div id="themeMessage" class="form-message"></div>
             </div>
             <div class="form-container half-width">
+                <h2 align="center">Auto Carry Forward</h2>
+                <div class="start-date-manager">
+                    <label for="autoCarryForwardToggle">Enable monthly carry forward</label>
+                    <input type="checkbox" id="autoCarryForwardToggle" class="styled-checkbox">
+                    <button id="saveAutoCarryForward" class="nav-button">Save</button>
+                </div>
+                <div id="autoCarryForwardMessage" class="form-message"></div>
+            </div>
+        </div>
+
+        <div class="settings-container">
+            <div class="form-container half-width">
                 <h2 align="center">Import/Export Data</h2>
                 <div class="export-buttons">
                     <div class="export-options">
@@ -122,6 +134,7 @@
                     <p>New Categories: <span id="summary-new-categories"></span></p>
                 </div>
             </div>
+            <div class="form-container half-width"></div>
         </div>
         
         <div class="form-container">
@@ -259,6 +272,7 @@
         let editFormSelectedTags = new Set();
         let currentCurrency = "usd";
         let currentStartDate = 1;
+        let currentAutoCarryForward = false;
         let draggedItem = null;
         let recurringExpenses = [];
         let recurringExpenseToDelete = null;
@@ -535,6 +549,30 @@
                 showMessage('startDateMessage', 'Error saving start date', false);
             }
         }
+
+        function populateAutoCarryForwardInput() {
+            document.getElementById('autoCarryForwardToggle').checked = !!currentAutoCarryForward;
+        }
+
+        async function saveAutoCarryForward() {
+            const enabled = document.getElementById('autoCarryForwardToggle').checked;
+            try {
+                const response = await fetch('./autocarryforward/edit', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(enabled)
+                });
+                if (response.ok) {
+                    currentAutoCarryForward = enabled;
+                    showMessage('autoCarryForwardMessage', 'Auto carry forward saved successfully', true);
+                } else {
+                    showMessage('autoCarryForwardMessage', 'Failed to save auto carry forward', false);
+                }
+            } catch (error) {
+                console.error('Error saving auto carry forward:', error);
+                showMessage('autoCarryForwardMessage', 'Error saving auto carry forward', false);
+            }
+        }
         
         async function fetchAndRenderRecurringExpenses() {
             try {
@@ -791,6 +829,7 @@
                 categories = [...config.categories];
                 currentCurrency = config.currency;
                 currentStartDate = config.startDate;
+                currentAutoCarryForward = !!config.autoCarryForward;
                 allTags.clear();
                 (expenses || []).forEach(exp => (exp.tags || []).forEach(tag => allTags.add(tag)));
                 (recurringExpenses || []).forEach(exp => (exp.tags || []).forEach(tag => allTags.add(tag)));
@@ -798,6 +837,7 @@
                 renderCategories();
                 populateCurrencySelect();
                 populateStartDateInput();
+                populateAutoCarryForwardInput();
                 document.getElementById('recurringCategory').innerHTML = categories.map(c => `<option value="${c}">${c}</option>`).join('');
                 document.getElementById('editRecurringCategory').innerHTML = categories.map(c => `<option value="${c}">${c}</option>`).join('');
                 renderRecurringExpenses(recurringExpenses);
@@ -840,6 +880,7 @@
         document.getElementById('saveCategories').addEventListener('click', saveCategories);
         document.getElementById('saveCurrency').addEventListener('click', saveCurrency);
         document.getElementById('saveStartDate').addEventListener('click', saveStartDate);
+        document.getElementById('saveAutoCarryForward').addEventListener('click', saveAutoCarryForward);
         document.getElementById('csv-import-file').addEventListener('change', handleCsvImport);
         document.getElementById('csv-import-file-old').addEventListener('change', handleCsvImportOld);
         document.getElementById('newCategory').addEventListener('keypress', e => e.key === 'Enter' && addCategory());

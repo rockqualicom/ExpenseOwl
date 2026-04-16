@@ -50,7 +50,8 @@ const (
 		id VARCHAR(255) PRIMARY KEY DEFAULT 'default',
 		categories TEXT NOT NULL,
 		currency VARCHAR(255) NOT NULL,
-		start_date INTEGER NOT NULL
+		start_date INTEGER NOT NULL,
+		auto_carry_forward BOOLEAN NOT NULL DEFAULT FALSE
 	);`
 )
 
@@ -94,14 +95,15 @@ func (s *databaseStore) saveConfig(config *Config) error {
 		return fmt.Errorf("failed to marshal categories: %v", err)
 	}
 	query := `
-		INSERT INTO config (id, categories, currency, start_date)
-		VALUES ('default', $1, $2, $3)
+		INSERT INTO config (id, categories, currency, start_date, auto_carry_forward)
+		VALUES ('default', $1, $2, $3, $4)
 		ON CONFLICT (id) DO UPDATE SET
 			categories = EXCLUDED.categories,
 			currency = EXCLUDED.currency,
-			start_date = EXCLUDED.start_date;
+			start_date = EXCLUDED.start_date,
+			auto_carry_forward = EXCLUDED.auto_carry_forward;
 	`
-	_, err = s.db.Exec(query, string(categoriesJSON), config.Currency, config.StartDate)
+	_, err = s.db.Exec(query, string(categoriesJSON), config.Currency, config.StartDate, config.AutoCarryForward)
 	s.defaults["currency"] = config.Currency
 	s.defaults["start_date"] = fmt.Sprintf("%d", config.StartDate)
 	return err
@@ -119,10 +121,11 @@ func (s *databaseStore) updateConfig(updater func(c *Config) error) error {
 }
 
 func (s *databaseStore) GetConfig() (*Config, error) {
-	query := `SELECT categories, currency, start_date FROM config WHERE id = 'default'`
+	query := `SELECT categories, currency, start_date, auto_carry_forward FROM config WHERE id = 'default'`
 	var categoriesStr, currency string
 	var startDate int
-	err := s.db.QueryRow(query).Scan(&categoriesStr, &currency, &startDate)
+	var autoCarryForward bool
+	err := s.db.QueryRow(query).Scan(&categoriesStr, &currency, &startDate, &autoCarryForward)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -139,6 +142,7 @@ func (s *databaseStore) GetConfig() (*Config, error) {
 	var config Config
 	config.Currency = currency
 	config.StartDate = startDate
+	config.AutoCarryForward = autoCarryForward
 	if err := json.Unmarshal([]byte(categoriesStr), &config.Categories); err != nil {
 		return nil, fmt.Errorf("failed to parse categories from db: %v", err)
 	}
@@ -203,6 +207,21 @@ func (s *databaseStore) UpdateStartDate(startDate int) error {
 	})
 }
 
+func (s *databaseStore) GetAutoCarryForward() (bool, error) {
+	config, err := s.GetConfig()
+	if err != nil {
+		return false, err
+	}
+	return config.AutoCarryForward, nil
+}
+
+func (s *databaseStore) UpdateAutoCarryForward(enabled bool) error {
+	return s.updateConfig(func(c *Config) error {
+		c.AutoCarryForward = enabled
+		return nil
+	})
+}
+
 func scanExpense(scanner interface{ Scan(...any) error }) (Expense, error) {
 	var expense Expense
 	var tagsStr sql.NullString
@@ -238,6 +257,120 @@ func (s *databaseStore) GetAllExpenses() ([]Expense, error) {
 		}
 		expenses = append(expenses, expense)
 	}
+
+	// Check if auto-carry-forward is enabled and generate opening balances if needed
+	config, err := s.GetConfig()
+	if err != nil {
+		return expenses, nil // Return expenses even if config read fails
+	}
+
+	if config.AutoCarryForward {
+		updatedExpenses, err := s.ensureOpeningBalances(expenses, config)
+		if err == nil && len(updatedExpenses) > len(expenses) {
+			// Add new opening balance expenses to database
+			for _, exp := range updatedExpenses[len(expenses):] {
+				s.AddExpense(exp)
+			}
+			expenses = updatedExpenses
+		}
+	}
+
+	return expenses, nil
+}
+
+// ensureOpeningBalances checks all months with expenses and creates opening balance
+// expenses for months that don't have one yet (when auto-carry-forward is enabled)
+func (s *databaseStore) ensureOpeningBalances(expenses []Expense, config *Config) ([]Expense, error) {
+	if len(expenses) == 0 {
+		return expenses, nil
+	}
+
+	// Group expenses by month (year-month)
+	monthMap := make(map[string][]Expense)
+	for _, exp := range expenses {
+		yearMonth := fmt.Sprintf("%d-%02d", exp.Date.Year(), exp.Date.Month())
+		monthMap[yearMonth] = append(monthMap[yearMonth], exp)
+	}
+
+	// Sort months to process them in order
+	var months []string
+	for ym := range monthMap {
+		months = append(months, ym)
+	}
+
+	// Find the earliest month
+	if len(months) == 0 {
+		return expenses, nil
+	}
+
+	// Check each month (except the earliest) for opening balance
+	newExpenses := make([]Expense, 0)
+	currency := config.Currency
+	if currency == "" {
+		currency = "usd"
+	}
+
+	// Use "Income" as the default category for opening balance
+	openingBalanceCategory := "Income"
+
+	for yearMonth, monthExps := range monthMap {
+		// Check if this month already has an opening balance
+		hasOpeningBalance := false
+		for _, exp := range monthExps {
+			if exp.Name == "Opening Balance (Carried Forward)" {
+				hasOpeningBalance = true
+				break
+			}
+		}
+
+		if hasOpeningBalance {
+			continue
+		}
+
+		// Parse year and month
+		var year, month int
+		fmt.Sscanf(yearMonth, "%d-%d", &year, &month)
+
+		// Calculate previous month
+		prevYear, prevMonth := year, month-1
+		if prevMonth == 0 {
+			prevYear--
+			prevMonth = 12
+		}
+		prevYearMonth := fmt.Sprintf("%d-%02d", prevYear, prevMonth)
+
+		// Get previous month expenses
+		prevMonthExps, exists := monthMap[prevYearMonth]
+		if !exists {
+			continue // No previous month data, skip
+		}
+
+		// Calculate previous month balance
+		prevIncome := 0.0
+		prevExpenses := 0.0
+		for _, exp := range prevMonthExps {
+			if exp.Amount > 0 {
+				prevIncome += exp.Amount
+			} else {
+				prevExpenses += -exp.Amount
+			}
+		}
+		prevBalance := prevIncome - prevExpenses
+
+		// Only create opening balance if there's a positive balance to carry forward
+		if prevBalance > 0 {
+			// Create opening balance expense for the first day of current month
+			openingDate := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+			openingExp := GenerateOpeningBalanceExpense(prevBalance, currency, openingDate, openingBalanceCategory)
+			newExpenses = append(newExpenses, openingExp)
+		}
+	}
+
+	// Add new opening balance expenses to the list
+	if len(newExpenses) > 0 {
+		expenses = append(expenses, newExpenses...)
+	}
+
 	return expenses, nil
 }
 

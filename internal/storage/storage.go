@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Storage interface for all storage types
@@ -22,6 +24,8 @@ type Storage interface {
 	UpdateCurrency(currency string) error
 	GetStartDate() (int, error)
 	UpdateStartDate(startDate int) error
+	GetAutoCarryForward() (bool, error)
+	UpdateAutoCarryForward(enabled bool) error
 
 	// Recurring Expenses
 	GetRecurringExpenses() ([]RecurringExpense, error)
@@ -49,6 +53,7 @@ type Config struct {
 	Categories        []string           `json:"categories"`
 	Currency          string             `json:"currency"`
 	StartDate         int                `json:"startDate"`
+	AutoCarryForward  bool               `json:"autoCarryForward"`
 	RecurringExpenses []RecurringExpense `json:"recurringExpenses"`
 	// Tags              []string           `json:"tags"`
 }
@@ -97,6 +102,7 @@ func (c *Config) SetBaseConfig() {
 	c.Categories = defaultCategories
 	c.Currency = "usd"
 	c.StartDate = 1
+	c.AutoCarryForward = false
 	// c.Tags = []string{}
 	c.RecurringExpenses = []RecurringExpense{}
 }
@@ -278,4 +284,19 @@ var SupportedCurrencies = []string{
 	"vnd", // Vietnamese Dong
 	"myr", // Malaysian Ringgit
 	"mad", // Moroccan Dirham
+}
+
+// GenerateOpeningBalanceExpense creates an income expense record representing
+// the closing balance from the previous month. This is used when auto-carry-forward
+// is enabled to automatically add the previous month's balance as income.
+func GenerateOpeningBalanceExpense(prevMonthBalance float64, currency string, date time.Time, category string) Expense {
+	return Expense{
+		ID:       uuid.New().String(),
+		Name:     "Opening Balance (Carried Forward)",
+		Category: category,
+		Amount:   prevMonthBalance, // Positive amount = income
+		Currency: currency,
+		Date:     date,
+		Tags:     []string{"auto-generated", "opening-balance"},
+	}
 }
